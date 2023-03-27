@@ -1,0 +1,33 @@
+{
+  "name": "lighthouse-sitemap",
+  "version": "1.0.2",
+  "description": "Tool to automate lighthouse scores for each URL in your sitemap.xml",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/trendoid/lighthouse-sitemap.git"
+  },
+  "keywords": [
+    "lighthouse",
+    "xml",
+    "automation",
+    "sitemap"
+  ],
+  "author": "trendoid@gmail.com",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/trendoid/lighthouse-sitemap/issues"
+  },
+  "homepage": "https://github.com/trendoid/lighthouse-sitemap#readme",
+  "dependencies": {
+    "csv-stringify": "^6.3.0",
+    "lighthouse": "^10.0.2",
+    "puppeteer": "^19.7.5",
+    "xml2js": "^0.4.23"
+  }
+}
