@@ -2,7 +2,7 @@ import fs from 'fs';
 import { parseString } from 'xml2js';
 import { stringify } from 'csv-stringify';
 import lighthouse from 'lighthouse';
-import chromeLauncher from 'chrome-launcher';
+import puppeteer from 'puppeteer';
 
 const output = [];
 
@@ -11,28 +11,22 @@ let xml = fs.readFileSync("sitemap.xml", "utf8");
 
 const createRecords = async input => {
     console.log("Starting Lighthouse Tests");
-    for (var i in input) {
+    for (let i in input) {
+        const PORT = 8041;
+        const browser = await puppeteer.launch({
+            headless: true,
+            args: [`--remote-debugging-port=${PORT}`]
+        });
         try {
-            const chrome = await chromeLauncher.launch({
-                chromeFlags: [
-                    '--headless',
-                    '--no-first-run',
-                    '--no-default-browser-check',
-                    '--single-process',
-                    '--disable-dev-shm-usage',
-                    '--disable-full-page-screenshot'
-                ]
-            });
-
             const options = {
                 //logLevel: 'info',
-                port: chrome.port,
+                port: PORT,
                 strategy: "mobile",
                 onlyCategories: ['performance', 'accessibility', 'best-practices', 'seo']
             };
             const result = await lighthouse(input[i].url, options);
             const html = result.artifacts.MainDocumentContent;
-            var title = html !== null ? html.match(/<title[^>]*>([^<]+)<\/title>/)[1].trim() : "";
+            let title = html !== null ? html.match(/<title[^>]*>([^<]+)<\/title>/)[1].trim() : "";
 
             output.push({
                 'url': input[i].url,
@@ -56,9 +50,12 @@ const createRecords = async input => {
             });
             process.stdout.write("Record " + output.length + " \r");
 
-            await chrome.kill();
         } catch (error) {
             console.error("Error while testing: " + input[i].url);
+        } finally {
+            if (browser) {
+                await browser.close();
+            }
         }
     }
     console.log("Success!");
@@ -67,8 +64,8 @@ const createRecords = async input => {
 
 parseString(xml, function (err, result) {
     if (err === null) {
-        var rows = result.urlset.url;
-        var input = rows.map(function (row) {
+        let rows = result.urlset.url;
+        let input = rows.map(function (row) {
             return {
                 'url': row.loc[0],
                 'title': '',
