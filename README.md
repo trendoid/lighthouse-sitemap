@@ -64,3 +64,17 @@ Results are written to `output.csv` with the following columns:
 - SEO score
 
 The CSV is updated after each URL is tested, so you can monitor progress in real time.
+
+## Resuming after interruption
+
+The tool automatically resumes where it left off. On startup, it reads the existing `output.csv` and skips any URLs that have already been tested. This means you can safely stop the process at any time (Ctrl+C, internet outage, etc.) and re-run the same command to continue:
+
+```bash
+# First run — tests 500 URLs, stops at 200 due to an outage
+node index.js https://example.com/sitemap/sitemap-index.xml 5
+
+# Second run — picks up at URL 201, skipping the 200 already in output.csv
+node index.js https://example.com/sitemap/sitemap-index.xml 5
+```
+
+To start fresh, delete `output.csv` before running.
