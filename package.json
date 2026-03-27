@@ -27,7 +27,6 @@
   "dependencies": {
     "csv-stringify": "^6.7.0",
     "lighthouse": "^13.0.3",
-    "puppeteer": "^24.40.0",
     "xml2js": "^0.6.2"
   }
 }

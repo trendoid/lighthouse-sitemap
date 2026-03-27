@@ -1,11 +1,13 @@
 # lighthouse-sitemap
 
-Tool to automate Lighthouse scores for each URL in your sitemap. Supports both standard sitemaps and sitemap index files (with `.gz` compressed sub-sitemaps).
+Tool to automate Lighthouse scores for each URL in your sitemap. Supports both standard sitemaps and sitemap index files (with `.gz` compressed sub-sitemaps). Uses concurrent worker threads with `chrome-launcher` for fast, parallel testing.
 
 ## Requirements
 
-- Chrome
+- [Chrome](https://www.google.com/chrome/) installed on your system
 - Node.js
+
+The tool auto-detects Chrome from standard install locations. You can also set the `CHROME_PATH` environment variable to specify a custom path.
 
 ## Installation
 
@@ -19,7 +21,7 @@ npm install
 node index.js <sitemap-url> [concurrency]
 ```
 
-The optional `concurrency` parameter controls how many Lighthouse tests run in parallel (default: 3). Each worker launches its own Chrome instance on a separate debugging port. Lower this if your machine is resource-constrained, or raise it if you have headroom:
+The optional `concurrency` parameter controls how many Lighthouse tests run in parallel (default: 3). Each worker runs in its own thread with a dedicated Chrome instance. Start with 3-5 and increase based on your system resources:
 
 ```bash
 node index.js https://example.com/sitemap.xml 5

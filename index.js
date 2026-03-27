@@ -1,4 +1,5 @@
 import fs from 'fs';
+import path from 'node:path';
 import { gunzipSync } from 'node:zlib';
 import { Worker } from 'node:worker_threads';
 import { parseStringPromise } from 'xml2js';
@@ -9,6 +10,38 @@ const CONCURRENCY = Number.parseInt(process.argv[3], 10) || 3;
 if (!sitemapUrl) {
     console.error('Usage: node index.js <sitemap-url> [concurrency]');
     process.exit(1);
+}
+
+// Find Chrome: check standard locations, then fall back to Puppeteer's cache
+function findChrome() {
+    const candidates = [
+        process.env.CHROME_PATH,
+        String.raw`C:\Program Files\Google\Chrome\Application\chrome.exe`,
+        String.raw`C:\Program Files (x86)\Google\Chrome\Application\chrome.exe`,
+    ];
+
+    // Also check Puppeteer's cache for downloaded Chromium
+    const puppeteerCache = path.join(process.env.USERPROFILE || process.env.HOME, '.cache', 'puppeteer', 'chrome');
+    if (fs.existsSync(puppeteerCache)) {
+        const versions = fs.readdirSync(puppeteerCache).sort().reverse();
+        const cachePaths = versions.flatMap(ver => [
+            path.join(puppeteerCache, ver, 'chrome-win', 'chrome.exe'),
+            path.join(puppeteerCache, ver, 'chrome-win64', 'chrome.exe'),
+        ]);
+        candidates.push(...cachePaths);
+    }
+
+    for (const p of candidates) {
+        if (p && fs.existsSync(p)) return p;
+    }
+    return undefined;
+}
+
+const chromePath = findChrome();
+if (chromePath) {
+    console.log(`Using Chrome: ${chromePath}`);
+} else {
+    console.log('No Chrome found — chrome-launcher will attempt auto-detection');
 }
 
 const output = [];
@@ -30,7 +63,7 @@ async function fetchXml(url) {
 function spawnWorker(urls, total) {
     return new Promise((resolve, reject) => {
         const worker = new Worker(new URL('./lighthouse-worker.js', import.meta.url), {
-            workerData: { urls }
+            workerData: { urls, chromePath }
         });
         worker.on('message', (msg) => {
             if (msg.type === 'result') {

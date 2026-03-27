@@ -1,25 +1,37 @@
 import { parentPort, workerData } from 'node:worker_threads';
 import lighthouse from 'lighthouse';
-import puppeteer from 'puppeteer';
+import { launch } from 'chrome-launcher';
 
-const { urls } = workerData;
+const { urls, chromePath } = workerData;
 
-const browser = await puppeteer.launch({
-    headless: true,
-    args: ['--log-level=3', '--silent-debugger-extension-api']
+const chrome = await launch({
+    chromePath,
+    chromeFlags: [
+        '--headless',
+        '--log-level=3',
+        '--silent-debugger-extension-api',
+        '--disable-gpu',
+        '--disable-dev-shm-usage',
+        '--disable-background-networking',
+        '--disable-default-apps',
+        '--disable-extensions',
+        '--disable-sync',
+        '--no-first-run',
+        '--disable-translate',
+    ]
 });
 
 try {
     for (const url of urls) {
         try {
-            const page = await browser.newPage();
             const options = {
+                port: chrome.port,
                 formFactor: 'mobile',
                 onlyCategories: ['performance', 'accessibility', 'best-practices', 'seo'],
                 skipAudits: ['screenshot-thumbnails', 'final-screenshot', 'full-page-screenshot'],
                 disableStorageReset: true,
             };
-            const result = await lighthouse(url, options, undefined, page);
+            const result = await lighthouse(url, options);
             const html = result.artifacts.MainDocumentContent;
             const titleMatch = html ? /(<title[^>]*>([^<]+)<\/title>)/.exec(html) : null;
             const title = titleMatch ? titleMatch[2].trim() : '';
@@ -42,5 +54,5 @@ try {
         }
     }
 } finally {
-    await browser.close();
+    chrome.kill();
 }
