@@ -25,9 +25,9 @@
   },
   "homepage": "https://github.com/trendoid/lighthouse-sitemap#readme",
   "dependencies": {
-    "csv-stringify": "^6.4.6",
-    "lighthouse": "^11.7.0",
-    "puppeteer": "^22.6.2",
+    "csv-stringify": "^6.7.0",
+    "lighthouse": "^13.0.3",
+    "puppeteer": "^24.40.0",
     "xml2js": "^0.6.2"
   }
 }

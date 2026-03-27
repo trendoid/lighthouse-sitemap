@@ -1,85 +1,103 @@
 import fs from 'fs';
-import { parseString } from 'xml2js';
-import { stringify } from 'csv-stringify';
-import lighthouse from 'lighthouse';
-import puppeteer from 'puppeteer';
+import { gunzipSync } from 'node:zlib';
+import { Worker } from 'node:worker_threads';
+import { parseStringPromise } from 'xml2js';
+import { stringify } from 'csv-stringify/sync';
+
+const sitemapUrl = process.argv[2];
+const CONCURRENCY = Number.parseInt(process.argv[3], 10) || 3;
+if (!sitemapUrl) {
+    console.error('Usage: node index.js <sitemap-url> [concurrency]');
+    process.exit(1);
+}
 
 const output = [];
+let completed = 0;
 
-// this example reads the file synchronously
-let xml = fs.readFileSync("sitemap.xml", "utf8");
-
-const createRecords = async input => {
-    console.log("Starting Lighthouse Tests");
-    for (let i in input) {
-        const PORT = 8041;
-        const browser = await puppeteer.launch({
-            headless: true,
-            args: [`--remote-debugging-port=${PORT}`]
-        });
-        try {
-            const options = {
-                //logLevel: 'info',
-                port: PORT,
-                strategy: "mobile",
-                onlyCategories: ['performance', 'accessibility', 'best-practices', 'seo']
-            };
-            const result = await lighthouse(input[i].url, options);
-            const html = result.artifacts.MainDocumentContent;
-            let title = html !== null ? html.match(/<title[^>]*>([^<]+)<\/title>/)[1].trim() : "";
-
-            output.push({
-                'url': input[i].url,
-                'title': title,
-                'performance': result.lhr.categories.performance.score ? (result.lhr.categories.performance.score * 100).toFixed(0) : 'NA',
-                'accessibility': result.lhr.categories.accessibility.score ? (result.lhr.categories.accessibility.score * 100).toFixed(0) : 'NA',
-                'best-practices': result.lhr.categories['best-practices'].score ? (result.lhr.categories['best-practices'].score * 100).toFixed(0) : 'NA',
-                'seo': result.lhr.categories.seo.score ? (result.lhr.categories.seo.score * 100).toFixed(0) : 'NA'
-            });
-
-            stringify(output, { header: true }, (err, data) => {
-                if (err) {
-                    console.log(err);
-                } else {
-                    fs.writeFile('output.csv', data, (err, result) => {
-                        if (err) {
-                            console.log(err);
-                        }
-                    });
-                }
-            });
-            process.stdout.write("Record " + output.length + " \r");
-
-        } catch (error) {
-            console.error("Error while testing: " + input[i].url);
-        } finally {
-            if (browser) {
-                await browser.close();
-            }
-        }
+async function fetchXml(url) {
+    console.log(`Downloading ${url}`);
+    const response = await fetch(url);
+    if (!response.ok) {
+        throw new Error(`Failed to download ${url}: ${response.status} ${response.statusText}`);
     }
-    console.log("Success!");
+    if (url.endsWith('.gz')) {
+        const buffer = Buffer.from(await response.arrayBuffer());
+        return gunzipSync(buffer).toString('utf-8');
+    }
+    return response.text();
+}
+
+function spawnWorker(urls, total) {
+    return new Promise((resolve, reject) => {
+        const worker = new Worker(new URL('./lighthouse-worker.js', import.meta.url), {
+            workerData: { urls }
+        });
+        worker.on('message', (msg) => {
+            if (msg.type === 'result') {
+                output.push(msg.record);
+                const csv = stringify(output, { header: true });
+                fs.writeFileSync('output.csv', csv);
+            } else if (msg.type === 'error') {
+                console.error(`Error while testing: ${msg.url}`, msg.message);
+            }
+            completed++;
+            process.stdout.write(`Record ${completed}/${total}\r`);
+        });
+        worker.on('error', reject);
+        worker.on('exit', (code) => {
+            if (code !== 0) reject(new Error(`Worker exited with code ${code}`));
+            else resolve();
+        });
+    });
+}
+
+const createRecords = async (input) => {
+    console.log(`Starting Lighthouse Tests (concurrency: ${CONCURRENCY})`);
+
+    const chunks = Array.from({ length: CONCURRENCY }, () => []);
+    input.forEach((item, i) => chunks[i % CONCURRENCY].push(item));
+
+    const workers = chunks.map((chunk) =>
+        spawnWorker(chunk.map(item => item.url), input.length)
+    );
+    await Promise.all(workers);
+
+    console.log("\nSuccess!");
 };
 
+const xml = await fetchXml(sitemapUrl);
 
-parseString(xml, function (err, result) {
-    if (err === null) {
-        let rows = result.urlset.url;
-        let input = rows.map(function (row) {
-            return {
-                'url': row.loc[0],
-                'title': '',
-                'performance': '',
-                'accessibility': '',
-                'best-practices': '',
-                'seo': ''
-            };
-        });
-        console.log("Reading Sitemap");
-        console.log(input.length + " Records");
-        createRecords(input);
+let parsed;
+try {
+    parsed = await parseStringPromise(xml);
+} catch (err) {
+    console.error('Failed to parse sitemap XML:', err);
+    process.exit(1);
+}
+
+let input;
+
+if (parsed.sitemapindex) {
+    const sitemaps = parsed.sitemapindex.sitemap;
+    console.log(`Found sitemap index with ${sitemaps.length} sub-sitemaps`);
+
+    input = [];
+    for (const entry of sitemaps) {
+        const subUrl = entry.loc[0];
+        try {
+            const subXml = await fetchXml(subUrl);
+            const subParsed = await parseStringPromise(subXml);
+            const urls = subParsed.urlset.url.map(row => ({ url: row.loc[0] }));
+            input.push(...urls);
+            console.log(`  ${subUrl} — ${urls.length} URLs`);
+        } catch (err) {
+            console.error(`Failed to process sub-sitemap ${subUrl}:`, err.message);
+        }
     }
-    else {
-        console.log(err);
-    }
-});
+} else {
+    const rows = parsed.urlset.url;
+    input = rows.map(row => ({ url: row.loc[0] }));
+}
+
+console.log(`Total URLs to test: ${input.length}`);
+await createRecords(input);
