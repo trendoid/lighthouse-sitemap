@@ -44,8 +44,28 @@ if (chromePath) {
     console.log('No Chrome found — chrome-launcher will attempt auto-detection');
 }
 
+// Load existing results from output.csv for resume support
 const output = [];
-let completed = 0;
+const completedUrls = new Set();
+if (fs.existsSync('output.csv')) {
+    const lines = fs.readFileSync('output.csv', 'utf-8').split('\n').slice(1);
+    for (const line of lines) {
+        if (!line.trim()) continue;
+        const url = line.split(',')[0].replaceAll(/^"|"$/g, '');
+        completedUrls.add(url);
+        // Parse the full row back into an object
+        const cols = line.match(/(".*?"|[^,]+)/g) || [];
+        const val = (i) => (cols[i] || '').replaceAll(/^"|"$/g, '');
+        output.push({
+            url: val(0), title: val(1), performance: val(2),
+            accessibility: val(3), 'best-practices': val(4), seo: val(5)
+        });
+    }
+    if (completedUrls.size > 0) {
+        console.log(`Resuming — ${completedUrls.size} URLs already tested`);
+    }
+}
+let completed = completedUrls.size;
 
 async function fetchXml(url) {
     console.log(`Downloading ${url}`);
@@ -132,5 +152,6 @@ if (parsed.sitemapindex) {
     input = rows.map(row => ({ url: row.loc[0] }));
 }
 
-console.log(`Total URLs to test: ${input.length}`);
-await createRecords(input);
+const remaining = input.filter(item => !completedUrls.has(item.url));
+console.log(`Total URLs: ${input.length} — skipping ${input.length - remaining.length} already tested`);
+await createRecords(remaining);
